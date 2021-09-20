@@ -1,0 +1,40 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "mocha test/test.js --timeout 2000",
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mexanik2003/adtm-server.git"
+  },
+  "author": "AD",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Mexanik2003/adtm-server/issues"
+  },
+  "homepage": "https://github.com/Mexanik2003/adtm-server#readme",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "jsonwebtoken": "^8.5.1",
+    "knex": "^0.95.11",
+    "koa": "^2.13.1",
+    "koa-bodyparser": "^4.3.0",
+    "koa-router": "^10.1.1",
+    "nodemon": "^2.0.12",
+    "pg": "^8.7.1",
+    "telebot": "^1.4.1"
+  },
+  "devDependencies": {
+    "chai": "^4.3.4",
+    "chai-http": "^4.3.0",
+    "knex-migrate-sql-file": "^1.0.3",
+    "mocha": "^9.1.1",
+    "typescript": "^4.4.3"
+  }
+}
