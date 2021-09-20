@@ -13,6 +13,8 @@ function onGetTelegramMsg(msg)  {
     .then(isValidatedUser => {
         if (isValidatedUser) {
             switch(msg.text) {
+                case '/start': 
+                    return `Пользователь не зарегистрирован. Ваш идентификатор для регистрации:\r\n<b>${msg.from.id}</b>`
                 case '/user': 
                     return JSON.stringify(user)
 

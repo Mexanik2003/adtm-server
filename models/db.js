@@ -23,7 +23,7 @@ async function getUserParams(telegramid = 0) {
 }
 
 async function addUser({telegram_id,fullname,email}) {
-    console.log({telegram_id,fullname,email});
+    //console.log({telegram_id,fullname,email});
     const answer = {}
     if (telegram_id && fullname && email) {
         const data = {
@@ -31,23 +31,44 @@ async function addUser({telegram_id,fullname,email}) {
             email,
             fullname
         }
-        const userId = await db.insert(data).returning('id').into('users');
-        answer.data = userId[0];
-        answer.status = 200;
+        try {
+            const userId = await db.insert(data).returning('id').into('users');
+            answer.data = userId[0];
+            answer.status = 200;
+            //console.log(userId)
+
+        } catch (err) {
+
+            answer.data = err.detail;
+            answer.status = 500;
+
+        }
         return answer;
     } else {
-        answer.data = 'Error adding new user';
+        answer.data = {error: 'Error adding new user'};
         answer.status = 500;
         return answer;
     }
 
 }
 
-async function isUserAuthorized({email,pin}) {
+async function isUserAuthorized(email,pin) {
+    //console.log(email);
+    //console.log(pin);
+    //console.log(await db.select('*'). from('users').where('email',email).toSQL().toNative());
     const fetch = await db.select('*'). from('users').where('email',email).andWhere('pin',pin);
-    if (fetch) return true;
-    return false;
+    if (fetch) return fetch[0];
+    return null;
 
+}
+
+async function setJwt(email,jwtToken) {
+    await db('users')
+        .where('email', email)
+        .update({
+            'jwt': jwtToken,
+            'pin': ""
+        })
 }
 
 async function getLessonsList(searchParams) {
@@ -278,7 +299,8 @@ function convertDateToUTC(date) { return new Date(date.getUTCFullYear(), date.ge
 export {
     getUserParams,
     addUser,
-    isUserAuthorized
+    isUserAuthorized,
+    setJwt
 }
 
 

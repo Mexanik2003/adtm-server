@@ -17,7 +17,7 @@ const createUserRoute = async (ctx, next) =>  {
     const result = await createUser(ctx.request.body)
     ctx.status = result.status;
     ctx.body = result.data;
-    console.log(ctx);
+    //console.log(ctx);
     next();
 }
 
@@ -32,7 +32,8 @@ const generatePin = async (ctx, next) =>  {
 const signinUserRoute = async (ctx, next) =>  {
     //const rnd = Math.round(1000+8999*Math.random());
     //const result = await sendMsgToTelegramId(ctx.request.body.telegram_id,rnd)
-    const jwt = await autorizeUser({email: ctx.request.body.email, pin: ctx.request.body.pin});
+    // console.log({email: ctx.request.body.email, pin: ctx.request.body.pin});
+    const jwt = await autorizeUser(ctx.request.body.email, ctx.request.body.pin);
     ctx.status = 200;
     ctx.body = jwt;
     next();
