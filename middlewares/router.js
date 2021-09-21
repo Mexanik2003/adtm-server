@@ -3,6 +3,7 @@
 import NotFoundError from "../errors/not-found-error.js";
 import { sendMsgToTelegramId } from "./tg-api.js";
 import { autorizeUser, createUser } from "./user.js";
+import { getTaskList } from "./task.js";
 
 
 // const getData = async (ctx, next) =>  {
@@ -34,10 +35,24 @@ const signinUserRoute = async (ctx, next) =>  {
     //const result = await sendMsgToTelegramId(ctx.request.body.telegram_id,rnd)
     // console.log({email: ctx.request.body.email, pin: ctx.request.body.pin});
     const jwt = await autorizeUser(ctx.request.body.email, ctx.request.body.pin);
-    ctx.status = 200;
-    ctx.body = jwt;
+    if (jwt) {
+        ctx.status = 200;
+        ctx.body = jwt;
+    } else {
+        ctx.status = 401;
+        ctx.body = {};
+    }
     next();
 }
+
+const getTaskListRoute = async (ctx, next) =>  {
+    const result = await getTaskList(ctx.request.body.userId,ctx.request.body.jwt);
+    ctx.status = result.status;
+    ctx.body = result.data;
+    //console.log(ctx);
+    next();
+}
+
 
 
 // const setData = async (ctx, next) =>  {
@@ -51,5 +66,6 @@ const signinUserRoute = async (ctx, next) =>  {
 export {
     createUserRoute,
     generatePin,
-    signinUserRoute
+    signinUserRoute,
+    getTaskListRoute
 }

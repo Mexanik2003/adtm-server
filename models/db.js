@@ -39,20 +39,20 @@ async function addUser({telegram_id,fullname,email}) {
 
         } catch (err) {
 
-            answer.data = err.detail;
-            answer.status = 500;
+            answer.data = {error: err.detail};
+            answer.status = 400;
 
         }
         return answer;
     } else {
-        answer.data = {error: 'Error adding new user'};
-        answer.status = 500;
+        answer.data = {error: 'Required parameter lost'};
+        answer.status = 400;
         return answer;
     }
 
 }
 
-async function isUserAuthorized(email,pin) {
+async function getUserInfo(email,pin) {
     //console.log(email);
     //console.log(pin);
     //console.log(await db.select('*'). from('users').where('email',email).toSQL().toNative());
@@ -69,6 +69,18 @@ async function setJwt(email,jwtToken) {
             'jwt': jwtToken,
             'pin': ""
         })
+}
+
+async function isUserAuthorized(userId, jwt) {
+    const fetch = await db.select('id'). from('users').where('jwt',jwt).andWhere('id',userId);
+    if (fetch[0]) return true;
+    return false;
+}
+
+function getTasks(userId) {
+    const fetch = db.select('*'). from('tasks').where('user_id',userId);
+    //console.log(fetch);
+    return fetch;
 }
 
 async function getLessonsList(searchParams) {
@@ -299,8 +311,10 @@ function convertDateToUTC(date) { return new Date(date.getUTCFullYear(), date.ge
 export {
     getUserParams,
     addUser,
-    isUserAuthorized,
-    setJwt
+    getUserInfo,
+    setJwt,
+    getTasks,
+    isUserAuthorized
 }
 
 

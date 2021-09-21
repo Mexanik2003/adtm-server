@@ -1,4 +1,4 @@
-import { addUser, getUserParams, isUserAuthorized, setJwt } from "../models/db.js";
+import { addUser, getUserParams, getUserInfo, setJwt } from "../models/db.js";
 import jwt from 'jsonwebtoken'
 
 
@@ -14,11 +14,11 @@ function createUser(query) {
 
 function autorizeUser(email,pin) {
     if (email && pin) {
-        return isUserAuthorized(email,pin)
+        return getUserInfo(email,pin)
         .then((user) => {
             if (user) {
 
-                console.log(user);
+                //console.log(user);
                 const jwtToken = jwt.sign({ text: `${email}+${pin}+${Date.now()}`}, process.env.JWT_SECRET);
                 setJwt(email,jwtToken);
                 return {
