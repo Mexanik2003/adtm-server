@@ -1,11 +1,13 @@
 //const Router = require('koa-router');
 import Router from 'koa-router'
-import { createUserRoute, generatePin, signinUserRoute, getTaskListRoute } from '../middlewares/router.js';
+import { signupUserRoute, generateSignupPin, signinUserRoute, getTaskListRoute, generateSigninPin } from '../middlewares/router.js';
 let router = new Router();
 
-router.post('/signup',createUserRoute);
+router.post('/signup',signupUserRoute);
+router.post('/signup/pin',generateSignupPin);
+
 router.post('/signin',signinUserRoute);
-router.post('/signup/pin',generatePin);
+router.post('/signin/pin',generateSigninPin);
 
 router.get('/tasks',getTaskListRoute);
 

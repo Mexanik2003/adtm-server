@@ -22,53 +22,88 @@ async function getUserParams(telegramid = 0) {
     return fetch[0];
 }
 
-async function addUser({telegram_id,fullname,email}) {
-    //console.log({telegram_id,fullname,email});
-    const answer = {}
+async function addUser({telegram_id,fullname,email,jwt}) {
     if (telegram_id && fullname && email) {
         const data = {
             telegram_id,
             email,
-            fullname
+            fullname,
+            jwt
         }
         try {
             const userId = await db.insert(data).returning('id').into('users');
-            answer.data = userId[0];
-            answer.status = 200;
+            if (userId) {
+                return jwt;
+            }
             //console.log(userId)
 
         } catch (err) {
-
-            answer.data = {error: err.detail};
-            answer.status = 400;
-
+            
         }
-        return answer;
     } else {
-        answer.data = {error: 'Required parameter lost'};
-        answer.status = 400;
-        return answer;
-    }
 
+    }
+    return null;
+}
+
+async function updateUser(email, data) {
+    if (email) {
+        try {
+            const result = await db('users')
+            .returning('*')
+            .where('email', email)
+            .update(data);
+            return result[0];
+        } catch(err) {
+            return null;
+        }
+    } else {
+        return null;
+    }
 }
 
 async function getUserInfo(email,pin) {
     //console.log(email);
     //console.log(pin);
-    //console.log(await db.select('*'). from('users').where('email',email).toSQL().toNative());
-    const fetch = await db.select('*'). from('users').where('email',email).andWhere('pin',pin);
-    if (fetch) return fetch[0];
+    console.log(await db.select('*'). from('users').where('email',email).andWhere('pin',pin).toSQL().toNative());
+    const result = await db.select('*'). from('users').where('email',email).andWhere('pin',pin);
+    if (result) {
+        console.log(result);
+        return result[0];
+    }
     return null;
 
 }
 
 async function setJwt(email,jwtToken) {
+    const date = new Date(Date.now());
     await db('users')
         .where('email', email)
         .update({
             'jwt': jwtToken,
-            'pin': ""
+            'pin': "",
+            lastlogin:   date.getUTCFullYear()+
+            "-"+(date.getUTCMonth()+1)+
+            "-"+date.getUTCDate()+
+            " "+date.getUTCHours()+
+            ":"+date.getUTCMinutes()+
+            ":"+date.getUTCSeconds()
         })
+}
+
+async function savePin(telegram_id, pin) {
+    const date = new Date(Date.now());
+    const data = {
+        telegram_id,
+        pin,
+        date:   date.getUTCFullYear()+
+            "-"+(date.getUTCMonth()+1)+
+            "-"+date.getUTCDate()+
+            " "+date.getUTCHours()+
+            ":"+date.getUTCMinutes()+
+            ":"+date.getUTCSeconds()
+    }
+    return await db.insert(data).returning('id').into('sentpins');
 }
 
 async function isUserAuthorized(userId, jwt) {
@@ -77,9 +112,9 @@ async function isUserAuthorized(userId, jwt) {
     return false;
 }
 
-function getTasks(userId) {
-    const fetch = db.select('*'). from('tasks').where('user_id',userId);
-    //console.log(fetch);
+async function getTasks(userId) {
+    //console.log(db.select('*'). from('tasks').where('user_id',userId).toSQL().toNative());
+    const fetch = await db.select('*'). from('tasks').where('user_id',userId);
     return fetch;
 }
 
@@ -314,7 +349,9 @@ export {
     getUserInfo,
     setJwt,
     getTasks,
-    isUserAuthorized
+    isUserAuthorized,
+    savePin,
+    updateUser
 }
 
 

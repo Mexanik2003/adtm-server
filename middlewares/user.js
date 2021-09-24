@@ -1,15 +1,10 @@
-import { addUser, getUserParams, getUserInfo, setJwt } from "../models/db.js";
+import { addUser, getUserParams, getUserInfo, setJwt, updateUser, isUserAuthorized } from "../models/db.js";
 import jwt from 'jsonwebtoken'
 
 
-function createUser(query) {
-    return addUser(query)
-    .then((result) => {
-        return {
-            data: result.data,
-            status: result.status,
-        }
-    })
+async function createUser(query) {
+    const jwtToken = jwt.sign({ text: `${query.email}+${query.pin}+${Date.now()}`}, process.env.JWT_SECRET);
+    return await addUser({...query, jwt: jwtToken});
 }
 
 function autorizeUser(email,pin) {
@@ -18,7 +13,7 @@ function autorizeUser(email,pin) {
         .then((user) => {
             if (user) {
 
-                //console.log(user);
+                // console.log(user);
                 const jwtToken = jwt.sign({ text: `${email}+${pin}+${Date.now()}`}, process.env.JWT_SECRET);
                 setJwt(email,jwtToken);
                 return {
@@ -34,7 +29,17 @@ function autorizeUser(email,pin) {
     }
 }
 
+function savePinToUser(email, pin) {
+    return updateUser(email,{pin})
+}
+
+async function checkUserSignedIn(userId, jwt) {
+    return await isUserAuthorized(userId, jwt);
+}
+
 export { 
     createUser,
-    autorizeUser
+    autorizeUser,
+    savePinToUser,
+    checkUserSignedIn
 };

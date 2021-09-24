@@ -2,8 +2,9 @@
 
 import NotFoundError from "../errors/not-found-error.js";
 import { sendMsgToTelegramId } from "./tg-api.js";
-import { autorizeUser, createUser } from "./user.js";
+import { autorizeUser, createUser, savePinToUser, checkUserSignedIn } from "./user.js";
 import { getTaskList } from "./task.js";
+import { savePin } from "../models/db.js";
 
 
 // const getData = async (ctx, next) =>  {
@@ -14,19 +15,65 @@ import { getTaskList } from "./task.js";
 //     next();
 // }
 
-const createUserRoute = async (ctx, next) =>  {
-    const result = await createUser(ctx.request.body)
-    ctx.status = result.status;
-    ctx.body = result.data;
-    //console.log(ctx);
+const signupUserRoute = async (ctx, next) =>  {
+    try {
+        const jwt = await createUser(ctx.request.body);
+        //console.log(jwt)
+        if (jwt) {
+            ctx.status = 200;
+            ctx.body = {jwt: jwt};
+        } else {
+            ctx.status = 401;
+            ctx.body = {error: "error"};
+        }
+    } catch (err) {
+        console.log(err);
+        ctx.status = 401;
+        ctx.body = JSON.stringify(err);
+    }
     next();
 }
 
-const generatePin = async (ctx, next) =>  {
+const generateSignupPin = async (ctx, next) =>  {
     const rnd = Math.round(1000+8999*Math.random());
-    const result = await sendMsgToTelegramId(ctx.request.body.telegram_id,rnd)
-    ctx.status = 200;
-    ctx.body = rnd;
+    try {
+        const result = await sendMsgToTelegramId(ctx.request.body.telegram_id,rnd);
+        if (result) {
+            ctx.status = 200;
+            ctx.body = { pin: rnd };
+        } else {
+            ctx.status = 400;
+            ctx.body = { error: 'Error sending pin, check Telegram identifier' };
+        }
+        //console.log(await savePin(ctx.request.body.telegram_id,rnd));
+    } catch(err) {
+    }
+    next();
+}
+
+const generateSigninPin = async (ctx, next) =>  {
+    const rnd = Math.round(1000+8999*Math.random());
+    try {
+        const user = await savePinToUser(ctx.request.body.email, rnd);
+        if (user) {
+            const msg = await sendMsgToTelegramId(user.telegram_id,rnd);
+            if (msg) {
+                ctx.status = 200;
+                ctx.body = { ok: "New PIN sent" };
+            } else {
+                ctx.status = 400;
+                ctx.body = {error: "Error sending pin, check Telegram identifier"};
+                
+            }
+        } else {
+            ctx.status = 400;
+            ctx.body = {error: "User not found"};
+            
+        }
+    } catch(err) {
+        ctx.status = 400;
+        ctx.body = {error: JSON.stringify(err)};
+    }
     next();
 }
 
@@ -34,21 +81,26 @@ const signinUserRoute = async (ctx, next) =>  {
     //const rnd = Math.round(1000+8999*Math.random());
     //const result = await sendMsgToTelegramId(ctx.request.body.telegram_id,rnd)
     // console.log({email: ctx.request.body.email, pin: ctx.request.body.pin});
-    const jwt = await autorizeUser(ctx.request.body.email, ctx.request.body.pin);
-    if (jwt) {
+    const user = await autorizeUser(ctx.request.body.email, ctx.request.body.pin);
+    if (user) {
         ctx.status = 200;
-        ctx.body = jwt;
+        ctx.body = user;
     } else {
         ctx.status = 401;
-        ctx.body = {};
+        ctx.body = {error: "Not authorized"};
     }
     next();
 }
 
 const getTaskListRoute = async (ctx, next) =>  {
-    const result = await getTaskList(ctx.request.body.userId,ctx.request.body.jwt);
-    ctx.status = result.status;
-    ctx.body = result.data;
+    if (await checkUserSignedIn(ctx.request.body.userId, ctx.request.body.jwt)) {
+        const result = await getTaskList(ctx.request.body.userId);
+        ctx.status = 200;
+        ctx.body = result ? result : []
+    } else {
+        ctx.status = 401;
+        ctx.body = {error: "Not authorized"};
+    };
     //console.log(ctx);
     next();
 }
@@ -64,8 +116,9 @@ const getTaskListRoute = async (ctx, next) =>  {
 // }
 
 export {
-    createUserRoute,
-    generatePin,
+    signupUserRoute,
+    generateSignupPin,
+    generateSigninPin,
     signinUserRoute,
     getTaskListRoute
 }
