@@ -78,19 +78,8 @@ const generateSigninPin = async (ctx, next) => {
     return ctx;
 }
 
-const checkAuthorization = async (ctx, next) => {
-    const userId = ctx.request.header.jwt ? await checkUserSignedIn(ctx.request.header.jwt) : null;
-    if (userId) {
-        ctx.state.user = userId;
-        return next();
-    } else {
-        ctx.status = 401;
-        ctx.body = {error: "Not authorized"};
-        return ctx;
-    }
-}
-
 const signinUserRoute = async (ctx, next) => {
+
     //const rnd = Math.round(1000+8999*Math.random());
     //const result = await sendMsgToTelegramId(ctx.request.body.telegram_id,rnd)
     // console.log({email: ctx.request.body.email, pin: ctx.request.body.pin});
@@ -118,28 +107,34 @@ const logoutUser = async (ctx, next) => {
 //     return ctx;
 }
 
-
-
-const getTaskListRoute = async (ctx, next) => {
-    if (ctx.request.header.jwt) {
-        const user = (JSON.parse(jwt.decode(ctx.request.header.jwt).user));
-        // console.log('vvv jwt decode vvv');
-        console.log(ctx);
-        // console.log('^^^ jwt decode ^^^');
-
-        if (user.id) {
-            const result = await getTaskList(user.id);
-            ctx.status = 200;
-            ctx.body = result ? result : [];
+async function checkAuthorization(ctx, next) {
+    console.log(ctx)
+    const jwt = ctx.request.header.authorization ? ctx.request.header.authorization.replace('Bearer ','') : null;
+    if (jwt) {
+        const userId = await checkUserSignedIn(jwt);
+        if (userId) {
+            ctx.user_id = userId;
+            await next();
         } else {
             ctx.status = 401;
-            ctx.body = {error: "Not authorized"};
+            ctx.body = {error: "Not authorized (checkAuthorization route)"};
+            return ctx;
         }
     } else {
         ctx.status = 401;
-        ctx.body = {error: "JWT required"};
+        ctx.body = {error: "Not authorized (Bearer JWT required)"};
+        return ctx;
+
     }
-    next();
+}
+
+
+
+async function getTaskListRoute(ctx, next) {
+    const tasks = await getTaskList(ctx.user_id)
+    ctx.status = 200;
+    ctx.body = tasks;
+    console.log(ctx.body)
 }
 
 

@@ -25,9 +25,6 @@ router.use(checkAuthorization)
 router.get('/tasks',getTaskListRoute);
 router.post('/logout',logoutUser);
 
-//router.post('/signin',signUserRoute);
-//router.post('/lessons', setData);
-
 export {
     router
 };
