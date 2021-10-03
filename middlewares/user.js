@@ -1,4 +1,4 @@
-import { addUser, getUserParams, getUserInfo, setJwt, updateUser, isUserAuthorized } from "../models/db.js";
+import { addUser,  getUserInfo, setJwt, updateUser, isUserAuthorized, getUserParamsByTelegramIdDB } from "../models/db.js";
 import jwt from 'jsonwebtoken'
 
 
@@ -9,16 +9,29 @@ async function createUser(query) {
 
 function autorizeUser(email,pin) {
     if (email && pin) {
-        return getUserInfo(email,pin)
+        return getUserInfo(email)
         .then((user) => {
-            if (user) {
+            if (user && user.pin === pin) {
 
-                // console.log(user);
-                const jwtToken = jwt.sign({ text: `${email}+${pin}+${Date.now()}`}, process.env.JWT_SECRET);
-                setJwt(email,jwtToken);
-                return {
-                    ...user, pin: "", jwt: jwtToken
-                }
+                const jwtToken = jwt.sign(
+                    {
+                        user: `${JSON.stringify({
+                            ...user,
+                            pin: "",
+                            jwt: ""
+                        })}`
+                    },
+                    process.env.JWT_SECRET
+                );
+                return setJwt(email,jwtToken)
+                    .then(() => {
+                        return {
+                            ...user, pin: "", jwt: jwtToken
+                        }
+                    })
+                    .catch ((err) =>
+                        { error: JSON.stringify(err)}
+                    )
             } else {
                 return null;
             }
@@ -33,13 +46,18 @@ function savePinToUser(email, pin) {
     return updateUser(email,{pin})
 }
 
-async function checkUserSignedIn(userId, jwt) {
-    return await isUserAuthorized(userId, jwt);
+async function checkUserSignedIn(jwt) {
+    return await isUserAuthorized(jwt);
+}
+
+function getUserParamsByTelegramId(id) {
+    return getUserParamsByTelegramIdDB(id);
 }
 
 export { 
     createUser,
     autorizeUser,
     savePinToUser,
-    checkUserSignedIn
+    checkUserSignedIn,
+    getUserParamsByTelegramId
 };

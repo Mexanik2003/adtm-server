@@ -1,9 +1,9 @@
 //var types = require('pg').types;
 import types from 'pg';
-// override parsing date column to Date()
-types.types.setTypeParser(1082, val => val); 
-
 import knex from 'knex'
+// override parsing date column to Date()
+types.types.setTypeParser(1082, val => val);
+
 const db = knex({
     client: 'pg',
     connection: {
@@ -15,7 +15,7 @@ const db = knex({
     }
 });
 
-async function getUserParams(telegramid = 0) {
+async function getUserParamsByTelegramIdDB(telegramid = 0) {
     let data = {};
     const fetch = await db.select('*'). from('users').where('telegram_id',telegramid);
     //if (fetch) return fetch[0];
@@ -49,6 +49,10 @@ async function addUser({telegram_id,fullname,email,jwt}) {
 async function updateUser(email, data) {
     if (email) {
         try {
+            // console.log(await db('users')
+            //     .returning('*')
+            //     .where('email', email)
+            //     .update(data).toSQL().toNative());
             const result = await db('users')
             .returning('*')
             .where('email', email)
@@ -62,16 +66,18 @@ async function updateUser(email, data) {
     }
 }
 
-async function getUserInfo(email,pin) {
+async function getUserInfo(email) {
     //console.log(email);
     //console.log(pin);
-    console.log(await db.select('*'). from('users').where('email',email).andWhere('pin',pin).toSQL().toNative());
-    const result = await db.select('*'). from('users').where('email',email).andWhere('pin',pin);
+    // console.log(await db.select('*'). from('users').where('email',email).toSQL().toNative());
+    const result = await db.select('*'). from('users').where('email',email);
     if (result) {
-        console.log(result);
+        //console.log(result);
         return result[0];
+    } else {
+        return null;
+
     }
-    return null;
 
 }
 
@@ -88,7 +94,8 @@ async function setJwt(email,jwtToken) {
             " "+date.getUTCHours()+
             ":"+date.getUTCMinutes()+
             ":"+date.getUTCSeconds()
-        })
+        });
+    return jwtToken;
 }
 
 async function savePin(telegram_id, pin) {
@@ -106,15 +113,31 @@ async function savePin(telegram_id, pin) {
     return await db.insert(data).returning('id').into('sentpins');
 }
 
-async function isUserAuthorized(userId, jwt) {
-    const fetch = await db.select('id'). from('users').where('jwt',jwt).andWhere('id',userId);
-    if (fetch[0]) return true;
-    return false;
+async function isUserAuthorized(jwt) {
+    const fetch = await db.select('id'). from('users').where('jwt',jwt);
+    if (fetch[0]) return fetch[0].id;
+    return null;
 }
 
-async function getTasks(userId) {
+function getTasks(userId, params = {}) {
     //console.log(db.select('*'). from('tasks').where('user_id',userId).toSQL().toNative());
-    const fetch = await db.select('*'). from('tasks').where('user_id',userId);
+    const query = db
+        .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
+        .from('tasks')
+        .where('user_id',userId)
+        .andWhere((builder) => {
+            if (params && params.filter && params.filter.column && params.filter.operator && params.filter.value) {
+                builder.where(params.filter.column, params.filter.operator, params.filter.value);
+            }
+        });
+    //console.log(query.toString());
+    return query;
+}
+
+async function getTaskTypesDB() {
+    const fetch = db
+        .select('*')
+        .from('task_types')
     return fetch;
 }
 
@@ -344,14 +367,15 @@ function convertDateToUTC(date) { return new Date(date.getUTCFullYear(), date.ge
 
 
 export {
-    getUserParams,
+    getUserParamsByTelegramIdDB,
     addUser,
     getUserInfo,
     setJwt,
     getTasks,
     isUserAuthorized,
     savePin,
-    updateUser
+    updateUser,
+    getTaskTypesDB
 }
 
 

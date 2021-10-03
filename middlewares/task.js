@@ -1,8 +1,15 @@
-import { getTasks, isUserAuthorized } from "../models/db.js"
+import {getTasks, getTaskTypesDB, isUserAuthorized} from "../models/db.js"
 
-async function getTaskList (userId) {
-    return await getTasks(userId);
-    
+function getTaskList (userId, params = {}) {
+    return getTasks(userId, params);
 }
 
-export { getTaskList }
+function getTaskTypes () {
+    return getTaskTypesDB()
+}
+
+
+
+
+
+export { getTaskList,getTaskTypes }
