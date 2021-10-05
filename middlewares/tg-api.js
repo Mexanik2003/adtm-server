@@ -77,11 +77,14 @@ async function checkEventTriggers() {
 async function onGetTelegramCallback(msg) {
     //let {data} = msg;
     //console.log(JSON.parse(data));
+    answer.text = "No answer"
     return ValidateUser(msg.from.id)
         .then(async user => {
             if (user) {
                 const data = JSON.parse(msg.data);
                 data.action = data.action ? data.action : "";
+                let task = data.task_id ? (await getTask(data.task_id)) : {};
+                const types = await getTaskTypes();
                 switch (data.action) {
                     case "showall":
                         const tasklistOfType = await getTasksOfType(user);
@@ -111,13 +114,58 @@ async function onGetTelegramCallback(msg) {
                         }
                     break;
                     case "urgent":
-                        const task = await getTask(data.task_id);
                         await changeTask(data.task_id, {urgent: !task.urgent})
                         if (task.urgent) {
                             answer = {text: "Пожар выключен"}
                         } else {
                             answer = {text: "Пожар включен"}
                         }
+                        break;
+                    case "duedate":
+                        //console.log(JSON.parse((await getUser(user.id)).telegram_lastaction));
+                        answer.text = `Выберите действие`;
+                        answer.replyMarkup = {
+                            inline_keyboard: [
+                                [{text: `Указать дату/время`, callback_data: JSON.stringify({task_id: task.id, action: "changedate"})}],
+                                [{text: "Сменить категорию", callback_data: JSON.stringify({task_id: task.id, action: "category"})}],
+                            ],
+                        }
+                        break;
+                    case "changedate":
+                        await updateUser(user.id, {telegram_lastaction: JSON.stringify({...data, action: "setnewdate"})});
+                        answer.text = "Введите дату в формате ДД.ММ.ГГГГ ЧЧ:ММ";
+                        answer.replyMarkup = {};
+                        break;
+                    case "category":
+                        //console.log(types)
+                        answer.text = "Выберите категорию";
+                        let keyboard = [];
+                        types.map(type => keyboard.push([{
+                            text: type.fullname,
+                            callback_data: JSON.stringify({task_id: task.id, type_id: type.id, action: "setcategory"})
+                        }]))
+                        answer.replyMarkup = {
+                            inline_keyboard: keyboard
+                        };
+                        //console.log(answer.replyMarkup)
+                        break;
+                    case "setcategory":
+                        //console.log(data.type_id)
+                        task = await changeTask(task.id, {type: data.type_id})
+
+                        //console.log(task)
+                        answer.text = `Категория изменена на "${types.filter(type => type.name === task.task_type)[0].fullname}"`
+                        answer.replyMarkup = {}
+                        break;
+                    case "complete":
+                        task = await changeTask(task.id, {completed: !task.completed})
+                        answer.text = `${task.completed ? "Задача отмечена как выполненная" : "Задача возвращена в работу"}`
+                        answer.replyMarkup = {}
+                        break;
+                    case "trash":
+                        task = await changeTask(task.id, {trashed: !task.trashed})
+                        answer.text = `${task.trashed ? "Задача удалена в корзину" : "Задача восстановлена"}`
+                        answer.replyMarkup = {}
                         break;
                     default:
                         answer = {
@@ -159,14 +207,13 @@ function onGetTelegramCmd(msg, props) {
                     case (Number.isInteger(+cmd)):
                         const task = (await getTaskList(user.id, {filter: {column: 'id', operator: '=', value: +cmd}}))[0];
                         const task_type = (await getTaskTypes()).filter(type => type.id === task.type)[0].fullname
-                        console.log(task_type)
                         if (task) {
-                            answer.text = `/${task.id}\r\nКатегория: ${task_type}\r\nТема: ${task.subject}\r\nТекст: ${task.text || "-"}\r\n`;
+                            answer.text = `/${task.id}\r\nКатегория: ${task_type}\r\nТема: ${task.subject}\r\nТекст: ${task.text || "-"}\r\n${task.task_type === 'duedate' ? "Срок: "+moment(task.deadline).utcOffset(user.timezone).format("DD.MM.YYYY hh:mm")+"\r\n" : ""}`;
                             answer.replyMarkup = {
                                 inline_keyboard: [
-                                    [{text: `${task.urgent ? '**Пожар**' : 'Пожар'}`, callback_data: JSON.stringify({task_id: task.id, action: "urgent"})},{text: "Срок", callback_data: JSON.stringify({task_id: task.id, action: "dueto"})}],
-                                    [{text: "Завершить", callback_data: JSON.stringify({task_id: task.id, action: "done"})}, {text: "Отменить", callback_data: JSON.stringify({task_id: task.id, action: "cancel"})}],
-                                    [{text: "Категория", callback_data: JSON.stringify({task_id: task.id, action: "type"})}],
+                                    [{text: `${task.urgent ? '**Пожар**' : 'Пожар'}`, callback_data: JSON.stringify({task_id: task.id, action: "urgent"})},{text: `${task.task_type === 'duedate' ? '**Срок**' : 'Срок'}`, callback_data: JSON.stringify({task_id: task.id, action: "duedate"})}],
+                                    [{text: `${task.completed ? '**Завершена**' : 'Завершить'}`, callback_data: JSON.stringify({task_id: task.id, action: "complete"})}, {text: `${task.trashed ? '**Удалена**' : 'В корзину'}`, callback_data: JSON.stringify({task_id: task.id, action: "trash"})}],
+                                    [{text: "Сменить категорию", callback_data: JSON.stringify({task_id: task.id, action: "category"})}],
                                 ],
                             }
 
@@ -241,12 +288,46 @@ function onGetTelegramMsg(msg) {
                         }
                         break;
                     default:
-                        answer.text = "Создать задачу из введенного сообщения?";
-                        answer.replyMarkup = {
-                            inline_keyboard: [
-                                [{text: "Создать новую задачу", callback_data: JSON.stringify({action: "newtask", subject: msg.text})}],
-                                [{text: "Показать все задачи", callback_data: JSON.stringify({action: "showall"})}],
-                            ],
+                        if (user.telegram_lastaction) {
+                            switch(user.telegram_lastaction.action) {
+                                case "setnewdate":
+                                    let newDate = moment(msg.text,"DD.MM.YYYY hh:mm", true);
+                                    //let newDate = moment(msg.text);
+                                    if (newDate.isValid()) {
+                                        let taskTypeId = taskTypes.filter(type => type.name === 'duedate')[0].id;
+                                        let newTask = await changeTask(user.telegram_lastaction.task_id, {deadline: newDate, type: taskTypeId});
+                                        await updateUser(user.id, {telegram_lastaction: null});
+
+                                        answer = {
+                                            text: `Срок выполнения изменен на ${moment(newTask.deadline).utcOffset(user.timezone).format("DD.MM.YYYY hh:mm")}`,
+                                            replyMarkup: {}
+                                        }
+                                        console.log(newTask)
+                                    } else {
+                                        answer = {
+                                            text: `Формат даты неверен.\r\nВведите дату в формате ДД.ММ.ГГГГ ЧЧ:ММ`,
+                                            replyMarkup: {}
+                                        }
+
+                                    }
+
+                                    break;
+                                default:
+                                    answer = {
+                                        text: `No action`,
+                                        replyMarkup: {}
+                                    }
+
+                            }
+                        } else {
+                            answer.text = "Создать задачу из введенного сообщения?";
+                            answer.replyMarkup = {
+                                inline_keyboard: [
+                                    [{text: "Создать новую задачу", callback_data: JSON.stringify({action: "newtask", subject: msg.text})}],
+                                    [{text: "Показать все задачи", callback_data: JSON.stringify({action: "showall"})}],
+                                ],
+                            }
+
                         }
                 }
 
@@ -277,7 +358,7 @@ async function getTasksOfType(user, typeFullName = "") {
             answer += `${type.fullname}:\r\n`
                 + taskListSorted
                     .filter(item => item.task_type === type.name)
-                    .map(item => `${item.urgent ? "!!!" : ""} /${item.id} ${item.subject}`).join('\r\n').toString()
+                    .map(item => `${item.urgent ? "!!!" : ""} ${item.task_type === 'duedate' ? "(СРОК)" : ""} /${item.id} ${item.subject}`).join('\r\n').toString()
                 + '\r\n\r\n';
             //console.log(answer)
         }

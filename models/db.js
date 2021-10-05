@@ -119,7 +119,7 @@ async function setJwt(email,jwtToken) {
         .update({
             'jwt': jwtToken,
             'pin': "",
-            lastlogin:   moment().format
+            lastlogin:   moment()
         });
     return jwtToken;
 }
@@ -129,7 +129,7 @@ async function savePin(telegram_id, pin) {
     const data = {
         telegram_id,
         pin,
-        date:   moment().format
+        date:   moment()
     }
     return await db.insert(data).returning('id').into('sentpins');
 }
@@ -185,17 +185,19 @@ async function getSomeTasksDB(ids = []) {
 async function changeTaskDB(id, params = {}) {
     const date = new Date(Date.now());
     try {
-        const query = await db('tasks')
+        const query = db('tasks')
             .where('id', id)
             .update({
-                date_modified:   moment().format,
+                date_modified:   moment(),
                 ...params
             });
-        return (await getTaskDB(id))[0];
+        //console.log(query.toSQL().toNative())
+        await query;
+        return await getTaskDB(id);
     } catch (e) {
         const task = await getTaskDB(id);
         return {
-            ...task[0],
+            ...task,
             error: e
         };
 
@@ -210,7 +212,7 @@ async function changeSomeTasksDB(ids = [], params = {}) {
         const query = db('tasks')
             .whereIn('id', ids)
             .update({
-                date_modified:   moment().format,
+                date_modified:   moment(),
                 ...params
             });
         // console.log(query.toSQL().toNative())
