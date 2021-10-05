@@ -2,8 +2,8 @@
 
 import NotFoundError from "../errors/not-found-error.js";
 import {sendMsgToTelegramId} from "./tg-api.js";
-import {autorizeUser, createUser, savePinToUser, checkUserSignedIn} from "./user.js";
-import {getTaskList} from "./task.js";
+import {autorizeUser, createUser, savePinToUser, checkUserSignedIn, getUser, updateUser} from "./user.js";
+import {getTaskList,changeTask} from "./task.js";
 import {savePin} from "../models/db.js";
 import jwt from "jsonwebtoken";
 
@@ -95,6 +95,7 @@ const signinUserRoute = async (ctx, next) => {
 }
 
 const logoutUser = async (ctx, next) => {
+
 //     if (ctx.request.header.jwt) {
 //         const user = (JSON.parse(jwt.decode(ctx.request.header.jwt).user));
 //
@@ -107,8 +108,19 @@ const logoutUser = async (ctx, next) => {
 //     return ctx;
 }
 
+async function editUser(ctx, next) {
+    const user = await updateUser(ctx.user_id, ctx.request.body);
+    ctx.status = 200;
+    ctx.body = user;
+
+}
+
+async function getUserInfo(ctx, next) {
+    ctx.status = 200;
+    ctx.body = await getUser(ctx.user_id);
+}
+
 async function checkAuthorization(ctx, next) {
-    console.log(ctx)
     const jwt = ctx.request.header.authorization ? ctx.request.header.authorization.replace('Bearer ','') : null;
     if (jwt) {
         const userId = await checkUserSignedIn(jwt);
@@ -134,9 +146,13 @@ async function getTaskListRoute(ctx, next) {
     const tasks = await getTaskList(ctx.user_id)
     ctx.status = 200;
     ctx.body = tasks;
-    console.log(ctx.body)
 }
 
+async function editTask(ctx,next) {
+    const task = await changeTask(ctx.params.id,ctx.request.body);
+    ctx.status = 200;
+    ctx.body = task;
+}
 
 // const setData = async (ctx, next) =>  {
 //     // const result = await createLessons(ctx.request.body);
@@ -153,5 +169,8 @@ export {
     signinUserRoute,
     getTaskListRoute,
     checkAuthorization,
-    logoutUser
+    logoutUser,
+    editTask,
+    getUserInfo,
+    editUser
 }

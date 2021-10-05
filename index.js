@@ -2,7 +2,7 @@ import dotenv from 'dotenv'
 import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import TeleBot  from 'telebot';
-import {onGetTelegramCallback, onGetTelegramCmd, onGetTelegramMsg} from './middlewares/tg-api.js';
+import {checkEventTriggers, onGetTelegramCallback, onGetTelegramCmd, onGetTelegramMsg} from './middlewares/tg-api.js';
 import { router } from './routes/router.js';
 import cors from 'koa-cors';
 const { koaCors } = cors;
@@ -21,6 +21,9 @@ const server = app.listen(process.env.PORT);
 
 //app.use(router.allowedMethods());
 const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
+
+setInterval(checkEventTriggers,30000);
+
 
 // Колбэки от кнопок
 bot.on('callbackQuery', (msg) => {

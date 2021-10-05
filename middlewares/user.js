@@ -1,10 +1,26 @@
-import { addUser,  getUserInfo, setJwt, updateUser, isUserAuthorized, getUserParamsByTelegramIdDB } from "../models/db.js";
+import {
+    addUser,
+    getUserInfo,
+    setJwt,
+    updateUserPin,
+    isUserAuthorized,
+    getUserParamsByTelegramIdDB,
+    updateUserDB, getUserDB
+} from "../models/db.js";
 import jwt from 'jsonwebtoken'
 
 
 async function createUser(query) {
     const jwtToken = jwt.sign({ text: `${query.email}+${query.pin}+${Date.now()}`}, process.env.JWT_SECRET);
     return await addUser({...query, jwt: jwtToken});
+}
+
+async function getUser(id) {
+    return await getUserDB(id);
+}
+
+async function updateUser(id,params) {
+    return await updateUserDB(id,params);
 }
 
 function autorizeUser(email,pin) {
@@ -43,15 +59,15 @@ function autorizeUser(email,pin) {
 }
 
 function savePinToUser(email, pin) {
-    return updateUser(email,{pin})
+    return updateUserPin(email,{pin})
 }
 
 async function checkUserSignedIn(jwt) {
     return await isUserAuthorized(jwt);
 }
 
-function getUserParamsByTelegramId(id) {
-    return getUserParamsByTelegramIdDB(id);
+async function getUserParamsByTelegramId(id) {
+    return await getUserParamsByTelegramIdDB(id);
 }
 
 export { 
@@ -59,5 +75,7 @@ export {
     autorizeUser,
     savePinToUser,
     checkUserSignedIn,
-    getUserParamsByTelegramId
+    getUserParamsByTelegramId,
+    getUser,
+    updateUser
 };

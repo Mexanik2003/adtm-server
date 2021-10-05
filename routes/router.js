@@ -7,7 +7,10 @@ import {
     getTaskListRoute,
     generateSigninPin,
     checkAuthorization,
-    logoutUser
+    logoutUser,
+    editTask,
+    getUserInfo,
+    editUser
 } from '../middlewares/router.js';
 let router = new Router();
 
@@ -22,8 +25,11 @@ router.post('/signin/pin',generateSigninPin);
 router.use(checkAuthorization)
 
 // Роуты с авторизацией
-router.get('/tasks',getTaskListRoute);
-router.post('/logout',logoutUser);
+router.get('/tasks', getTaskListRoute);
+router.post('/logout', logoutUser);
+router.patch('/tasks/:id', editTask);
+router.get('/user', getUserInfo);
+router.patch('/user', editUser);
 
 export {
     router

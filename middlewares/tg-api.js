@@ -1,9 +1,10 @@
-import {getTaskList, getTaskTypes} from "./task.js";
+import moment from 'moment';
+import {changeSomeTasks, changeTask, createNewTask, getSomeTasks, getTask, getTaskList, getTaskTypes} from "./task.js";
 import NotFoundError from '../errors/not-found-error.js';
 import dotenv from 'dotenv'
 
 import TeleBot from 'telebot';
-import {getUserParamsByTelegramId} from "./user.js";
+import {getUser, getUserParamsByTelegramId, updateUser} from "./user.js";
 
 dotenv.config()
 const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
@@ -19,36 +20,112 @@ let answer = {
     }
 };
 
-function onGetTelegramCallback(msg) {
-    let {data} = msg;
+async function checkEventTriggers() {
+    console.log(`+++ event tick +++ ${moment().format()}`);
+
+    let taskTypes = await getTaskTypes();
+    let urgentTasks = await getTaskList(
+        null,
+        {
+            filter: {
+                column: 'urgent',
+                operator: '=',
+                value: `true`
+            }
+        }
+    );
+    let notifyTasks = {};
+    urgentTasks.map(task => {
+        notifyTasks[task.user_id] = notifyTasks[task.user_id] ? notifyTasks[task.user_id] : {};
+        notifyTasks[task.user_id].urgent = notifyTasks[task.user_id].urgent ? notifyTasks[task.user_id].urgent : []
+        notifyTasks[task.user_id].urgent.push(task.id);
+    });
+    let duedateTasks = await getTaskList(
+        null,
+        {
+            filter: {
+                column: 'type',
+                operator: '=',
+                value: `${taskTypes.filter(type => type.name === 'duedate')[0].id}`
+            }
+        }
+    );
+    duedateTasks.map(task => {
+        if (task.deadline) {
+            let now = moment();
+            let dueDate = moment(task.deadline);
+            let modifiedDate = task.date_modified ? moment(task.date_modified) : moment(task.date_created);
+            const diffToModified = dueDate.diff(modifiedDate,'minutes');
+            const diffToNow = dueDate.diff(now,'minutes');
+            // console.log(`${task.id} ${dueDate} ${modifiedDate} ${now}`)
+            console.log(`${task.id} ${diffToNow} ${diffToModified} ${diffToNow/diffToModified}`)
+            // По прошествии двух третей срока между последним уведомлением и дедлайном уведомляем снова
+            if (Math.abs(diffToNow/diffToModified) < 0.66 || diffToNow < 0) {
+                notifyTasks[task.user_id] = notifyTasks[task.user_id] ? notifyTasks[task.user_id] : [];
+                notifyTasks[task.user_id].duedate = notifyTasks[task.user_id].duedate ? notifyTasks[task.user_id].duedate : []
+                notifyTasks[task.user_id].duedate.push(task.id);
+                // console.log(`${task.id} need to notify`)
+            }
+            // console.log(`${task.id} need to notify`)
+        }
+    });
+    console.log(notifyTasks)
+    await notifyUsersForTasks(notifyTasks);
+}
+
+
+async function onGetTelegramCallback(msg) {
+    //let {data} = msg;
     //console.log(JSON.parse(data));
     return ValidateUser(msg.from.id)
-        .then(isValidatedUser => {
-            if (isValidatedUser) {
-                answer = {
-                    text: data,
-                    replyMarkup: {...answer.replyMarkup}
-                };
+        .then(async user => {
+            if (user) {
+                const data = JSON.parse(msg.data);
+                data.action = data.action ? data.action : "";
+                switch (data.action) {
+                    case "showall":
+                        const tasklistOfType = await getTasksOfType(user);
+                        if (tasklistOfType) {
+                            answer = {
+                                text: tasklistOfType,
+                                replyMarkup: {}
+                            }
+                        } else {
+                            answer = {
+                                text: "Нет задач",
+                                replyMarkup: {}
+                            }
+                        }
+                        break;
+                    case "newtask":
+                        const newTask = await createNewTask({subject: data.subject, user_id: user.id, type: 1});
+                        if (newTask) {
+                            answer = {
+                                text: `Создана задача /${newTask} (${data.subject})`,
+                            };
+                        } else {
+                            answer = {
+                                text: 'Ошибка при создании задачи'
+                            };
+
+                        }
+                    break;
+                    case "urgent":
+                        const task = await getTask(data.task_id);
+                        await changeTask(data.task_id, {urgent: !task.urgent})
+                        if (task.urgent) {
+                            answer = {text: "Пожар выключен"}
+                        } else {
+                            answer = {text: "Пожар включен"}
+                        }
+                        break;
+                    default:
+                        answer = {
+                            text: "No action",
+                        };
+                }
 
 
-                // switch(msg.text) {
-                //     case '/start':
-                //         return {
-                //             text: `Ваш идентификатор для регистрации:\r\n<b>${msg.from.id}</b>`,
-                //             replyMarkup: {
-                //                 inline_keyboard: [
-                //                     [{text: "Cards", callback_data: "Button \"Тык\" has been pressed"}],
-                //                 ],
-                //             }
-
-                //         }
-                //     case '/user':
-                //         return JSON.stringify(user)
-                //     default:
-                //         return {text: JSON.stringify(msg)}
-
-
-                // }
                 return answer;
             } else {
                 return {text: `Пользователь не зарегистрирован. Ваш идентификатор для регистрации:\r\n${msg.from.id}`}
@@ -70,9 +147,9 @@ function onGetTelegramCmd(msg, props) {
                             replyMarkup: {
                                 ...bot.keyboard(
                                     [
-                                        [{text: "Все задачи"}, {text: "Входящие"}, {text: "Пожарные"}, {text: "Со сроком исполнения"}],
+                                        [{text: "Все задачи"}, /*{text: "Входящие"},  {text: "Пожарные"},{text: "Со сроком исполнения"}],
                                         [{text: "Следующие действия"}, {text: "Проекты"}, {text: "Отложенное"}, {text: "Когда-нибудь"}],
-                                        [{text: "Мои настройки"}],
+                                        [{text: "Мои настройки"}*/],
                                     ],
                                     {once: true, resize: true}
                                 )
@@ -80,10 +157,19 @@ function onGetTelegramCmd(msg, props) {
                         }
                         break;
                     case (Number.isInteger(+cmd)):
-                        const task = await getTaskList(user.id, {filter: {column: 'id', operator: '=', value: +cmd}});
-                        //console.log(task)
-                        if (task[0]) {
-                            answer.text = `${task[0].id}\r\n${task[0].task_type}\r\n${task[0].subject}\r\n${task[0].text}\r\n`;
+                        const task = (await getTaskList(user.id, {filter: {column: 'id', operator: '=', value: +cmd}}))[0];
+                        const task_type = (await getTaskTypes()).filter(type => type.id === task.type)[0].fullname
+                        console.log(task_type)
+                        if (task) {
+                            answer.text = `/${task.id}\r\nКатегория: ${task_type}\r\nТема: ${task.subject}\r\nТекст: ${task.text || "-"}\r\n`;
+                            answer.replyMarkup = {
+                                inline_keyboard: [
+                                    [{text: `${task.urgent ? '**Пожар**' : 'Пожар'}`, callback_data: JSON.stringify({task_id: task.id, action: "urgent"})},{text: "Срок", callback_data: JSON.stringify({task_id: task.id, action: "dueto"})}],
+                                    [{text: "Завершить", callback_data: JSON.stringify({task_id: task.id, action: "done"})}, {text: "Отменить", callback_data: JSON.stringify({task_id: task.id, action: "cancel"})}],
+                                    [{text: "Категория", callback_data: JSON.stringify({task_id: task.id, action: "type"})}],
+                                ],
+                            }
+
                         } else {
                             answer.text = `Задача не найдена: ${cmd}`
                         }
@@ -155,7 +241,13 @@ function onGetTelegramMsg(msg) {
                         }
                         break;
                     default:
-                        answer.text = JSON.stringify(msg);
+                        answer.text = "Создать задачу из введенного сообщения?";
+                        answer.replyMarkup = {
+                            inline_keyboard: [
+                                [{text: "Создать новую задачу", callback_data: JSON.stringify({action: "newtask", subject: msg.text})}],
+                                [{text: "Показать все задачи", callback_data: JSON.stringify({action: "showall"})}],
+                            ],
+                        }
                 }
 
 
@@ -170,7 +262,7 @@ async function getTasksOfType(user, typeFullName = "") {
     let taskListSorted = await getTaskList(user.id);
     let taskTypes = await getTaskTypes();
     let answer = "";
-    let showAllTypes = typeFullName ? false : true;
+    let showAllTypes = !typeFullName;
     taskTypes.sort((a, b) => {
         if (a.view_order > b.view_order) {
             return 1
@@ -185,7 +277,7 @@ async function getTasksOfType(user, typeFullName = "") {
             answer += `${type.fullname}:\r\n`
                 + taskListSorted
                     .filter(item => item.task_type === type.name)
-                    .map(item => `/${item.id} ${item.subject}`).join('\r\n').toString()
+                    .map(item => `${item.urgent ? "!!!" : ""} /${item.id} ${item.subject}`).join('\r\n').toString()
                 + '\r\n\r\n';
             //console.log(answer)
         }
@@ -217,10 +309,43 @@ async function sendMsgToTelegramId(telegram_id, text) {
     }
 }
 
+async function notifyUsersForTasks(taskList) {
+    let message = "";
+    for (let userID in taskList) {
+        let user = await getUser(userID);
+        let lastNotify = user.last_notified ? moment(user.last_notified) : moment(0);
+        if (taskList[userID].urgent) {
+            message += taskList[userID].urgent.length > 1 ? "ПОЖАРНЫЕ задачи:\r\n" : "ПОЖАРНЫЕ задача:\r\n";
+            const urgentTasks = await getSomeTasks(taskList[userID].urgent);
+            urgentTasks.map(task => message += `/${task.id}: ${task.subject}\r\n`)
+        }
+        if (taskList[userID].duedate) {
+            message += taskList[userID].duedate.length > 1 ? "Запланированные задачи:\r\n" : "Запланированная задача:\r\n";
+            const duedateTasks = await getSomeTasks(taskList[userID].duedate);
+            duedateTasks.map(task => message += `/${task.id}: ${task.subject}\r\n`)
+        }
+        if (Math.abs(lastNotify.diff(moment(),'minutes')) >= +user.notify_freq) {
+                await bot.sendMessage(user.telegram_id, message);
+                await updateUser(userID,{last_notified: moment().format()})
+                if (taskList[userID].duedate) {
+                    await changeSomeTasks(taskList[userID].duedate, {
+                        date_modified: moment().format()
+                    })
+                }
+                try {
+            } catch (err) {
+                return null;
+            }
+        }
+    }
+}
+
+
 export {
     onGetTelegramMsg,
     sendMsgToTelegramId,
     onGetTelegramCallback,
-    onGetTelegramCmd
+    onGetTelegramCmd,
+    checkEventTriggers
 }
 

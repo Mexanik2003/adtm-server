@@ -1,6 +1,7 @@
 //var types = require('pg').types;
 import types from 'pg';
 import knex from 'knex'
+import moment from "moment";
 // override parsing date column to Date()
 types.types.setTypeParser(1082, val => val);
 
@@ -18,7 +19,6 @@ const db = knex({
 async function getUserParamsByTelegramIdDB(telegramid = 0) {
     let data = {};
     const fetch = await db.select('*'). from('users').where('telegram_id',telegramid);
-    //if (fetch) return fetch[0];
     return fetch[0];
 }
 
@@ -35,8 +35,6 @@ async function addUser({telegram_id,fullname,email,jwt}) {
             if (userId) {
                 return jwt;
             }
-            //console.log(userId)
-
         } catch (err) {
             
         }
@@ -46,17 +44,13 @@ async function addUser({telegram_id,fullname,email,jwt}) {
     return null;
 }
 
-async function updateUser(email, data) {
+async function updateUserPin(email, data) {
     if (email) {
         try {
-            // console.log(await db('users')
-            //     .returning('*')
-            //     .where('email', email)
-            //     .update(data).toSQL().toNative());
             const result = await db('users')
-            .returning('*')
-            .where('email', email)
-            .update(data);
+                .returning('*')
+                .where('email', email)
+                .update(data);
             return result[0];
         } catch(err) {
             return null;
@@ -66,19 +60,56 @@ async function updateUser(email, data) {
     }
 }
 
+async function updateUserDB(id, params = {}) {
+    try {
+        if (params) {
+            let query = db('users')
+                .returning('*')
+                .where('id', id)
+                .update(params);
+            // console.log(query.toSQL().toNative())
+            await query;
+        }
+        const user = (await getUserDB(id));
+        return user;
+    } catch (e) {
+        const user = (await getUserDB(id));
+        return {
+            ...user,
+            error: e
+        };
+    }
+}
+
+async function getUserDB(id) {
+    try {
+        const user = await db.select('*'). from('users').where('id',id);
+        return {
+            ...user[0],
+            jwt: ""
+        };
+    } catch (e) {
+        return {error: e};
+    }
+}
+
+
 async function getUserInfo(email) {
-    //console.log(email);
-    //console.log(pin);
-    // console.log(await db.select('*'). from('users').where('email',email).toSQL().toNative());
     const result = await db.select('*'). from('users').where('email',email);
     if (result) {
-        //console.log(result);
         return result[0];
     } else {
         return null;
-
     }
+}
 
+async function createNewTaskDB(params) {
+    try {
+        return (await db.insert(params).returning('id').into('tasks'));
+    } catch (err) {
+        console.log(err)
+        return null;
+    }
 }
 
 async function setJwt(email,jwtToken) {
@@ -88,12 +119,7 @@ async function setJwt(email,jwtToken) {
         .update({
             'jwt': jwtToken,
             'pin': "",
-            lastlogin:   date.getUTCFullYear()+
-            "-"+(date.getUTCMonth()+1)+
-            "-"+date.getUTCDate()+
-            " "+date.getUTCHours()+
-            ":"+date.getUTCMinutes()+
-            ":"+date.getUTCSeconds()
+            lastlogin:   moment().format
         });
     return jwtToken;
 }
@@ -103,12 +129,7 @@ async function savePin(telegram_id, pin) {
     const data = {
         telegram_id,
         pin,
-        date:   date.getUTCFullYear()+
-            "-"+(date.getUTCMonth()+1)+
-            "-"+date.getUTCDate()+
-            " "+date.getUTCHours()+
-            ":"+date.getUTCMinutes()+
-            ":"+date.getUTCSeconds()
+        date:   moment().format
     }
     return await db.insert(data).returning('id').into('sentpins');
 }
@@ -119,252 +140,101 @@ async function isUserAuthorized(jwt) {
     return null;
 }
 
-function getTasks(userId, params = {}) {
-    //console.log(db.select('*'). from('tasks').where('user_id',userId).toSQL().toNative());
-    const query = db
+async function getTasks(userId, params = {}) {
+    if (userId) {
+        return (await db
+            .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
+            .from('tasks')
+            .where('user_id',userId)
+            .andWhere((builder) => {
+                if (params && params.filter && params.filter.column && params.filter.operator && params.filter.value) {
+                    builder.where(params.filter.column, params.filter.operator, params.filter.value);
+                }
+            }));
+    } else {
+        let query = db
+            .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
+            .from('tasks')
+            .where((builder) => {
+                if (params && params.filter && params.filter.column && params.filter.operator && params.filter.value) {
+                    builder.where(params.filter.column, params.filter.operator, params.filter.value);
+                }
+            });
+        // console.log(query.toSQL().toNative())
+        return (await query);
+    }
+}
+
+async function getTaskDB(id) {
+    const query = await db
         .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
         .from('tasks')
-        .where('user_id',userId)
-        .andWhere((builder) => {
-            if (params && params.filter && params.filter.column && params.filter.operator && params.filter.value) {
-                builder.where(params.filter.column, params.filter.operator, params.filter.value);
-            }
-        });
-    //console.log(query.toString());
+        .where('id',id)
+    return query[0];
+}
+
+async function getSomeTasksDB(ids = []) {
+    const query = await db
+        .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
+        .from('tasks')
+        .whereIn('id',ids)
     return query;
 }
 
+// Меняем одну задачу
+async function changeTaskDB(id, params = {}) {
+    const date = new Date(Date.now());
+    try {
+        const query = await db('tasks')
+            .where('id', id)
+            .update({
+                date_modified:   moment().format,
+                ...params
+            });
+        return (await getTaskDB(id))[0];
+    } catch (e) {
+        const task = await getTaskDB(id);
+        return {
+            ...task[0],
+            error: e
+        };
+
+    }
+
+}
+
+// Меняем несколько задач
+async function changeSomeTasksDB(ids = [], params = {}) {
+    const date = new Date(Date.now());
+    try {
+        const query = db('tasks')
+            .whereIn('id', ids)
+            .update({
+                date_modified:   moment().format,
+                ...params
+            });
+        // console.log(query.toSQL().toNative())
+        return await query;
+    } catch (e) {
+        //const task = await getTaskDB(id);
+        console.log(e)
+        return {
+        //    ...task[0],
+            error: e
+        };
+
+    }
+
+}
+
+
+
 async function getTaskTypesDB() {
-    const fetch = db
+    const fetch = await db
         .select('*')
         .from('task_types')
     return fetch;
 }
-
-async function getLessonsList(searchParams) {
-    if (!searchParams.page) {searchParams.page = 1}
-    if (!searchParams.lessonsPerPage) {searchParams.lessonsPerPage = 5}
-    offset = (searchParams.page - 1) * searchParams.lessonsPerPage;
-    let data = {};
-    try {
-        data = await db.select('lessons.*', db.raw('(select count(visit) as "visitCount" from lesson_students ls where visit = true and lesson_id = lessons.id group by lesson_id)'))
-            .from('lessons').offset(offset).limit(searchParams.lessonsPerPage).where((builder) => {
-                if (searchParams.date) {
-                    let { date } = searchParams;
-                    let dateArr = date.split(',');
-                    if (dateArr.length < 2) {
-                        builder.where('date',searchParams.date);
-                    } else {
-                        let maxDate, minDate;
-                        if (Date.parse(dateArr[1]) >= Date.parse(dateArr[0])) {
-                            maxDate=dateArr[1];
-                            minDate=dateArr[0];
-                        } else {
-                            maxDate=dateArr[0];
-                            minDate=dateArr[1];
-                        }
-                        builder.where('date', '>=', minDate);
-                        builder.where('date', '<=', maxDate);
-                    }
-                }
-            if (searchParams.status) builder.andWhere('status',searchParams.status);
-            if (searchParams.teacherIds)  {
-                builder.whereIn('id', function() {
-                    const teachersIdsArr = searchParams.teacherIds.toString().split(",");
-                    if (teachersIdsArr) {
-                        this.select('lesson_id').from('lesson_teachers').whereIn('teacher_id',teachersIdsArr);
-                    } else {
-                        this.select('lesson_id').from('lesson_teachers').where('teacher_id',searchParams.teacherIds);
-                    }
-                });
-            }
-            if (searchParams.studentsCount) {
-                let { studentsCount } = searchParams;
-                if (Number(studentsCount)) {
-                    builder.whereIn('id', function() {
-                        this.select('lesson_id').from('lesson_students').groupBy('lesson_id')
-                            .havingRaw('COUNT (student_id) = ' + studentsCount);
-                    });
-                } else {
-                    const studentsCountArr = studentsCount.split(',');
-                    builder.whereIn('id', function() {
-                        this.select('lesson_id').from('lesson_students').groupBy('lesson_id')
-                            .havingRaw('COUNT (student_id) between ' + Math.min.apply(null, studentsCountArr) + ' and ' + Math.max.apply(null, studentsCountArr));
-                    });
-                }
-            }
-        })//.toString();
-        //console.log(data);
-
-        for (key in data) {
-            let query = await db.select('st.*', 'ls.visit').from({st: 'students', ls: 'lesson_students'})
-                .whereRaw('st.id = ls.student_id')
-                .andWhere('ls.lesson_id', data[key].id);
-            data[key].students = query;
-            query = await db.select('t.*').from({t: 'teachers', lt: 'lesson_teachers'})
-                .whereRaw('t.id = lt.teacher_id')
-                .andWhere('lt.lesson_id', data[key].id);
-            data[key].teachers = query;
-            //console.log(key);
-        }
-
-
-    } catch (err) {
-        return returnErr (err);
-    }
-    const answer = {};
-    answer.data = data;
-    answer.status = 200;
-    return answer;
-}
-
-function returnErr (err) {
-    const result = {};
-    result.data=err.routine;
-    result.status=400;
-    return result;
-}
-
-async function _createLessons(lessonParams) {
-    let data = [];
-
-
-    const answer = {};
-    answer.data = data;
-    answer.status = 200;
-    return answer;
-
-}
-
-async function createLessons(lessonParams) {
-    let data = [];
-
-    try {
-
-        if (!lessonParams.teacherIds) return returnErr({routine: "No teachers"});
-        if (!lessonParams.firstDate) return returnErr({routine: "No firstDate"});
-        if (!lessonParams.title) return returnErr({routine: "No title"});
-        if (!lessonParams.days) return returnErr({routine: "No days"});
-        if (!lessonParams.lastDate) lessonParams.lastDate = "9999-12-31";
-
-        // Даем приоритет параметру lessonsCount
-        if (!lessonParams.lessonsCount) {
-            lessonParams.lessonsCount = 300;
-        } else {
-            lessonParams.lastDate = "9999-12-31";
-        }
-
-        let firstDate = new Date;
-        if (!lessonParams.firstDate) {
-            firstDate = new Date();
-        } else {
-            firstDate = new Date(Date.parse(lessonParams.firstDate + 'T00:00:00.000Z'));
-        }
-
-        const lastDate = new Date(Date.parse(lessonParams.lastDate + 'T00:00:00.000Z'));
-        
-        let firstZeroDate = new Date;
-        cloneDate(firstDate, firstZeroDate);
-        firstZeroDate.setDate(firstZeroDate.getDate() - firstZeroDate.getDay());
-        let lastLessonDate = new Date;
-        cloneDate(firstZeroDate, lastLessonDate);
-
-        let days = lessonParams.days;
-        let count = 1;
-        let week = 0;
-        let lessonsArr = [];
-        while (validateLessonDate (count, lessonParams.lessonsCount, lastLessonDate, lastDate, firstDate)) {
-            await cloneDate(firstZeroDate, lastLessonDate);
-            days.forEach((day) => {
-                cloneDate(firstZeroDate, lastLessonDate);
-                lastLessonDate.setDate(firstZeroDate.getDate() + day);
-                if (
-                    validateLessonDate (count, lessonParams.lessonsCount, lastLessonDate, lastDate, firstDate) && 
-                    firstZeroDate <= lastLessonDate
-                ) {
-                    lessonsArr.push({
-                        title: lessonParams.title,
-                        date:  lastLessonDate.getUTCFullYear() + '-' + ('0' + (lastLessonDate.getUTCMonth()+1)).slice(-2) + '-' + ('0' + lastLessonDate.getUTCDate()).slice(-2),
-                        status: 0,
-                    });
-                    count++;
-                }
-            });
-            lastLessonDate.setDate(0);
-            week++;
-            firstZeroDate.setDate(firstZeroDate.getDate() + 7);
-        }
-
-        data = lessonsArr;
-
-        
-    } catch (err) {
-        return returnErr (err);
-    }
-
-
-    let lessonTeacherArr = [];
-    const lessonsIds = await db.insert(data).returning('id').into('lessons');
-
-    if (process.env.NODE_ENV === 'test') {
-        await db('lessons')
-            .whereIn('id', lessonsIds)
-            .del();
-    }
-    
-    if (lessonParams.teacherIds) {
-        lessonsIds.forEach((lesson) => {
-            lessonParams.teacherIds.forEach((teacher) => {
-                lessonTeacherArr.push({
-                    lesson_id: lesson,
-                    teacher_id: teacher
-                })
-            })
-        });
-    }
-
-    if (process.env.NODE_ENV !== 'test') {
-        await db.insert(lessonTeacherArr).into('lesson_teachers');
-    }
-
-    const answer = {};
-    answer.data = lessonsIds;
-    answer.status = 200;
-    return answer;
-
-}
-
-async function cloneDate (dateFrom, dateTo) {
-    dateTo.setUTCFullYear(dateFrom.getUTCFullYear());
-    dateTo.setUTCMonth(dateFrom.getUTCMonth());
-    dateTo.setUTCDate(dateFrom.getUTCDate());
-    dateTo.setUTCHours(dateFrom.getUTCHours());
-    dateTo.setUTCMinutes(dateFrom.getUTCMinutes());
-    dateTo.setUTCSeconds(dateFrom.getUTCSeconds());
-    dateTo.setUTCMilliseconds(dateFrom.getUTCMilliseconds());
-}
-
-function addNewLesson (lesson) {
-
-}
-
-function validateLessonDate (count, lessonsCount, lastLessonDate, lastDate, firstDate) {
-    if (
-        count <= lessonsCount &&
-        count <=300 &&
-        lastLessonDate <= lastDate &&
-        (+lastLessonDate - +firstDate)/86400000 <= 365
-    ) {
-        return true;
-    } else {
-        return false;
-    }
-
-}
-
-function convertDateToUTC(date) { return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()); }
-
-
 
 export {
     getUserParamsByTelegramIdDB,
@@ -374,8 +244,15 @@ export {
     getTasks,
     isUserAuthorized,
     savePin,
-    updateUser,
-    getTaskTypesDB
+    updateUserPin,
+    updateUserDB,
+    getTaskTypesDB,
+    changeTaskDB,
+    changeSomeTasksDB,
+    getUserDB,
+    createNewTaskDB,
+    getSomeTasksDB,
+    getTaskDB
 }
 
 
