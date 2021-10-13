@@ -105,7 +105,13 @@ async function getUserInfo(email) {
 
 async function createNewTaskDB(params) {
     try {
-        return (await db.insert(params).returning('id').into('tasks'));
+        const taskId = await db.insert(params).returning('id').into('tasks');
+        console.log(taskId)
+        if (taskId) {
+            return (await getTaskDB(taskId[0]))
+        } else {
+            return null;
+        }
     } catch (err) {
         console.log(err)
         return null;

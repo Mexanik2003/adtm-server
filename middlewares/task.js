@@ -32,7 +32,7 @@ async function getTask(id) {
 }
 
 async function createNewTask(params) {
-    return createNewTaskDB(params);
+    return await createNewTaskDB(params);
 }
 
 

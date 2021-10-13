@@ -36,9 +36,11 @@ async function checkEventTriggers() {
     );
     let notifyTasks = {};
     urgentTasks.map(task => {
-        notifyTasks[task.user_id] = notifyTasks[task.user_id] ? notifyTasks[task.user_id] : {};
-        notifyTasks[task.user_id].urgent = notifyTasks[task.user_id].urgent ? notifyTasks[task.user_id].urgent : []
-        notifyTasks[task.user_id].urgent.push(task.id);
+        if (!task.trashed && !task.completed) {
+            notifyTasks[task.user_id] = notifyTasks[task.user_id] ? notifyTasks[task.user_id] : {};
+            notifyTasks[task.user_id].urgent = notifyTasks[task.user_id].urgent ? notifyTasks[task.user_id].urgent : []
+            notifyTasks[task.user_id].urgent.push(task.id);
+        }
     });
     let duedateTasks = await getTaskList(
         null,
@@ -51,7 +53,7 @@ async function checkEventTriggers() {
         }
     );
     duedateTasks.map(task => {
-        if (task.deadline) {
+        if (task.deadline && !task.trashed && !task.completed) {
             let now = moment();
             let dueDate = moment(task.deadline);
             let modifiedDate = task.date_modified ? moment(task.date_modified) : moment(task.date_created);
@@ -60,11 +62,10 @@ async function checkEventTriggers() {
             // console.log(`${task.id} ${dueDate} ${modifiedDate} ${now}`)
             console.log(`${task.id} ${diffToNow} ${diffToModified} ${diffToNow/diffToModified}`)
             // По прошествии двух третей срока между последним уведомлением и дедлайном уведомляем снова
-            if (Math.abs(diffToNow/diffToModified) < 0.66 || diffToNow < 0) {
+            if ((Math.abs(diffToNow/diffToModified) < 0.66 || diffToNow < 0) && (moment(task.start_notify).isBefore(moment()))) {
                 notifyTasks[task.user_id] = notifyTasks[task.user_id] ? notifyTasks[task.user_id] : [];
                 notifyTasks[task.user_id].duedate = notifyTasks[task.user_id].duedate ? notifyTasks[task.user_id].duedate : []
                 notifyTasks[task.user_id].duedate.push(task.id);
-                // console.log(`${task.id} need to notify`)
             }
             // console.log(`${task.id} need to notify`)
         }
@@ -101,10 +102,11 @@ async function onGetTelegramCallback(msg) {
                         }
                         break;
                     case "newtask":
-                        const newTask = await createNewTask({subject: data.subject, user_id: user.id, type: 1});
+                        const newTask = await createNewTask({subject: user.telegram_lastaction.subject, user_id: user.id, type: 1});
+                        await updateUser(user.id, {telegram_lastaction: null});
                         if (newTask) {
                             answer = {
-                                text: `Создана задача /${newTask} (${data.subject})`,
+                                text: `Создана задача /${newTask.id} (${newTask.subject})`,
                             };
                         } else {
                             answer = {
@@ -166,6 +168,15 @@ async function onGetTelegramCallback(msg) {
                         task = await changeTask(task.id, {trashed: !task.trashed})
                         answer.text = `${task.trashed ? "Задача удалена в корзину" : "Задача восстановлена"}`
                         answer.replyMarkup = {}
+                        break;
+                    case "startnotif":
+                        let date = moment(task.deadline).subtract('hours',data.val).format("DD.MM.YYYY HH:mm")
+                        task = await changeTask(task.id, {start_notify: date})
+
+                        answer.text = `${date}`
+                        answer.replyMarkup = {}
+
+
                         break;
                     default:
                         answer = {
@@ -291,7 +302,9 @@ function onGetTelegramMsg(msg) {
                         if (user.telegram_lastaction) {
                             switch(user.telegram_lastaction.action) {
                                 case "setnewdate":
-                                    let newDate = moment(msg.text,"DD.MM.YYYY hh:mm", true);
+                                    let newDate = moment(msg.text,"DD.MM.YYYY HH:mm", true);
+                                    console.log(msg.text)
+                                    console.log(newDate)
                                     //let newDate = moment(msg.text);
                                     if (newDate.isValid()) {
                                         let taskTypeId = taskTypes.filter(type => type.name === 'duedate')[0].id;
@@ -299,8 +312,22 @@ function onGetTelegramMsg(msg) {
                                         await updateUser(user.id, {telegram_lastaction: null});
 
                                         answer = {
-                                            text: `Срок выполнения изменен на ${moment(newTask.deadline).utcOffset(user.timezone).format("DD.MM.YYYY hh:mm")}`,
-                                            replyMarkup: {}
+                                            text: `Срок выполнения установлен на ${moment(newTask.deadline).format("DD.MM.YYYY HH:mm")}\r\nНачать напоминать за:`,
+                                            replyMarkup: {
+                                                inline_keyboard: [
+                                                    [
+                                                        {text: `1 час`, callback_data: JSON.stringify({task_id: newTask.id, action: "startnotif", val: "1"})},
+                                                        {text: `1 день`, callback_data: JSON.stringify({task_id: newTask.id, action: "startnotif", val: "24"})},
+                                                    ],
+                                                    [
+                                                        {text: "2 часа", callback_data: JSON.stringify({task_id: newTask.id, action: "startnotif", val: "2"})},
+                                                        {text: `2 дня`, callback_data: JSON.stringify({task_id: newTask.id, action: "startnotif", val: "48"})},
+                                                    ],
+                                                    [
+                                                        {text: "6 часов", callback_data: JSON.stringify({task_id: newTask.id, action: "startnotif", val: "6"})},
+                                                    ],
+                                                ],
+                                            }
                                         }
                                         console.log(newTask)
                                     } else {
@@ -320,10 +347,12 @@ function onGetTelegramMsg(msg) {
 
                             }
                         } else {
+                            await updateUser(user.id, {telegram_lastaction: JSON.stringify({action: "newtask", subject: msg.text})});
+
                             answer.text = "Создать задачу из введенного сообщения?";
                             answer.replyMarkup = {
                                 inline_keyboard: [
-                                    [{text: "Создать новую задачу", callback_data: JSON.stringify({action: "newtask", subject: msg.text})}],
+                                    [{text: "Создать новую задачу", callback_data: JSON.stringify({action: "newtask"})}],
                                     [{text: "Показать все задачи", callback_data: JSON.stringify({action: "showall"})}],
                                 ],
                             }
@@ -357,7 +386,7 @@ async function getTasksOfType(user, typeFullName = "") {
         if (taskListSorted.find(task => task.task_type === type.name) && (type.fullname === typeFullName || showAllTypes)) {
             answer += `${type.fullname}:\r\n`
                 + taskListSorted
-                    .filter(item => item.task_type === type.name)
+                    .filter(item => item.task_type === type.name && !item.trashed)
                     .map(item => `${item.urgent ? "!!!" : ""} ${item.task_type === 'duedate' ? "(СРОК)" : ""} /${item.id} ${item.subject}`).join('\r\n').toString()
                 + '\r\n\r\n';
             //console.log(answer)

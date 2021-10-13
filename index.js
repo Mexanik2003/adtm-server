@@ -4,14 +4,15 @@ import bodyParser from 'koa-bodyparser';
 import TeleBot  from 'telebot';
 import {checkEventTriggers, onGetTelegramCallback, onGetTelegramCmd, onGetTelegramMsg} from './middlewares/tg-api.js';
 import { router } from './routes/router.js';
-import cors from 'koa-cors';
+import cors from 'koa2-cors';
 const { koaCors } = cors;
 
 dotenv.config()
 
 let app = new Koa();
 app.use(cors({options: {
-        origin: false
+        origin: false,
+        allowMethods: ['GET', 'PUT', 'POST', 'PATCH']
     }}));
 app.use(bodyParser());
 
@@ -27,9 +28,9 @@ setInterval(checkEventTriggers,30000);
 
 // Колбэки от кнопок
 bot.on('callbackQuery', (msg) => {
-    //console.log(msg);
     onGetTelegramCallback(msg)
     .then(answer => {
+        console.log(JSON.stringify(answer));
         bot.answerCallbackQuery(msg.id);
         bot.sendMessage(
             msg.from.id,
@@ -47,7 +48,7 @@ bot.on(/^\/(.+)$/, (msg, props) => {
     try {
         onGetTelegramCmd(msg, props)
         .then((answer) => {
-            //console.log(answer);
+            console.log(JSON.stringify(answer));
             try {
                 bot.sendMessage(
                     msg.from.id,
@@ -76,7 +77,7 @@ bot.on(/^(?!\/).*/, (msg) => {
     try {
         onGetTelegramMsg(msg)
         .then((answer) => {
-            //console.log(answer);
+            console.log(JSON.stringify(answer));
             try {
                 bot.sendMessage(
                     msg.from.id,
