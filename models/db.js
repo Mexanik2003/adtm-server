@@ -147,28 +147,68 @@ async function isUserAuthorized(jwt) {
 }
 
 async function getTasks(userId, params = {}) {
+    let query;
     if (userId) {
-        return (await db
-            .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
+        query = db
+            .select([
+                'tasks.*',
+                'task_types.id as tt_id',
+                'task_types.name as tt_name',
+                'task_types.fullname as tt_fullname',
+                'task_types.view_order as tt_view_order'
+            ])
             .from('tasks')
-            .where('user_id',userId)
+            .leftJoin(
+                'task_types',
+                'task_types.id',
+                'tasks.type'
+            )
+            .where('tasks.user_id',userId)
             .andWhere((builder) => {
                 if (params && params.filter && params.filter.column && params.filter.operator && params.filter.value) {
-                    builder.where(params.filter.column, params.filter.operator, params.filter.value);
+                    builder.where(`tasks.${params.filter.column}`, params.filter.operator, params.filter.value);
                 }
-            }));
+            });
     } else {
-        let query = db
-            .select(['*',db.raw('(select name as task_type from task_types tt where tasks.type = tt.id)')])
+        query = db
+            .select([
+                'tasks.*',
+                'task_types.id as tt_id',
+                'task_types.name as tt_name',
+                'task_types.fullname as tt_fullname',
+                'task_types.view_order as tt_view_order'
+            ])
+            .leftJoin(
+                'task_types',
+                'task_types.id',
+                'tasks.type'
+            )
             .from('tasks')
             .where((builder) => {
                 if (params && params.filter && params.filter.column && params.filter.operator && params.filter.value) {
                     builder.where(params.filter.column, params.filter.operator, params.filter.value);
                 }
             });
-        // console.log(query.toSQL().toNative())
-        return (await query);
     }
+    console.log(query.toSQL().toNative())
+    let taskList = await query;
+    taskList = taskList.map((task,index) => {
+        task = {
+            ... task,
+            taskType: {
+                id: task.tt_id,
+                name: task.tt_name,
+                fullName: task.tt_fullname,
+                viewOrder: task.tt_view_order
+            }
+        }
+        delete task.tt_id;
+        delete task.tt_name;
+        delete task.tt_fullname;
+        delete task.tt_view_order;
+        return task;
+    })
+    return taskList;
 }
 
 async function getTaskDB(id) {

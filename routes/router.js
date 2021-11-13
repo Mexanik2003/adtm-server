@@ -10,7 +10,9 @@ import {
     logoutUser,
     editTask,
     getUserInfo,
-    editUser
+    editUser,
+    createNewTaskRoute,
+    getTypeListRoute
 } from '../middlewares/router.js';
 let router = new Router();
 
@@ -26,6 +28,8 @@ router.use(checkAuthorization)
 
 // Роуты с авторизацией
 router.get('/tasks', getTaskListRoute);
+router.get('/tasktypes', getTypeListRoute);
+router.post('/tasks/new', createNewTaskRoute);
 router.post('/logout', logoutUser);
 router.patch('/tasks/:id', editTask);
 router.get('/user', getUserInfo);

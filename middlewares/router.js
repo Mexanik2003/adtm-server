@@ -3,7 +3,7 @@
 import NotFoundError from "../errors/not-found-error.js";
 import {sendMsgToTelegramId} from "./tg-api.js";
 import {autorizeUser, createUser, savePinToUser, checkUserSignedIn, getUser, updateUser} from "./user.js";
-import {getTaskList,changeTask} from "./task.js";
+import {getTaskList, changeTask, createNewTask, getTask, getTaskTypes} from "./task.js";
 import {savePin} from "../models/db.js";
 import jwt from "jsonwebtoken";
 
@@ -148,6 +148,12 @@ async function getTaskListRoute(ctx, next) {
     ctx.body = tasks;
 }
 
+async function getTypeListRoute(ctx, next) {
+    const types = await getTaskTypes()
+    ctx.status = 200;
+    ctx.body = types;
+}
+
 async function editTask(ctx,next) {
     const task = await changeTask(ctx.params.id,ctx.request.body);
     ctx.status = 200;
@@ -157,6 +163,20 @@ async function editTask(ctx,next) {
 // const setData = async (ctx, next) =>  {
 //     // const result = await createLessons(ctx.request.body);
 //     const result = {status: 200} 
+//     ctx.status = result.status;
+//     ctx.body = result.data;
+//     next();
+// }
+
+async function createNewTaskRoute(ctx,next) {
+    const newTask = await createNewTask(ctx.request.body);
+    ctx.status = 200;
+    ctx.body = newTask;
+}
+
+// const setData = async (ctx, next) =>  {
+//     // const result = await createLessons(ctx.request.body);
+//     const result = {status: 200}
 //     ctx.status = result.status;
 //     ctx.body = result.data;
 //     next();
@@ -172,5 +192,7 @@ export {
     logoutUser,
     editTask,
     getUserInfo,
-    editUser
+    editUser,
+    createNewTaskRoute,
+    getTypeListRoute
 }

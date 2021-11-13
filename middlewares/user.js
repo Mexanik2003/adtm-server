@@ -23,7 +23,7 @@ async function updateUser(id,params) {
     return await updateUserDB(id,params);
 }
 
-function autorizeUser(email,pin) {
+async function autorizeUser(email,pin) {
     if (email && pin) {
         return getUserInfo(email)
         .then((user) => {
@@ -53,6 +53,11 @@ function autorizeUser(email,pin) {
             }
 
         })
+    } else if (email === 'guest@example.com') {
+        let user = await getUserInfo(email);
+        return {
+            ...user, pin: ""
+        }
     } else {
         return null;
     }
