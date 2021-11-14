@@ -22,7 +22,7 @@ async function getUserParamsByTelegramIdDB(telegramid = 0) {
     return fetch[0];
 }
 
-async function addUser({telegram_id,fullname,email,jwt}) {
+async function addUser({telegram_id,fullname = 'New user',email,jwt}) {
     if (telegram_id && fullname && email) {
         const data = {
             telegram_id,
