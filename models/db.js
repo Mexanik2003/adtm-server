@@ -190,7 +190,7 @@ async function getTasks(userId, params = {}) {
                 }
             });
     }
-    console.log(query.toSQL().toNative())
+    //console.log(query.toSQL().toNative())
     let taskList = await query;
     taskList = taskList.map((task,index) => {
         task = {

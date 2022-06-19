@@ -2,6 +2,10 @@ import moment from 'moment';
 import {changeSomeTasks, changeTask, createNewTask, getSomeTasks, getTask, getTaskList, getTaskTypes} from "./task.js";
 import NotFoundError from '../errors/not-found-error.js';
 import dotenv from 'dotenv'
+import { format, fromUnixTime } from 'date-fns'
+import { ru } from 'date-fns/locale/index.js'
+import pkg from 'date-fns-tz';
+const { utcToZonedTime } = pkg;
 
 import TeleBot from 'telebot';
 import {getUser, getUserParamsByTelegramId, updateUser} from "./user.js";
@@ -55,14 +59,14 @@ async function checkEventTriggers() {
     duedateTasks.map(task => {
         if (task.deadline && !task.trashed && !task.completed) {
             let now = moment();
-            let dueDate = moment(task.deadline);
+            let dueDate = moment.unix(task.deadline);
             let modifiedDate = task.date_modified ? moment(task.date_modified) : moment(task.date_created);
             const diffToModified = dueDate.diff(modifiedDate,'minutes');
             const diffToNow = dueDate.diff(now,'minutes');
             // console.log(`${task.id} ${dueDate} ${modifiedDate} ${now}`)
             console.log(`${task.id} ${diffToNow} ${diffToModified} ${diffToNow/diffToModified}`)
             // По прошествии двух третей срока между последним уведомлением и дедлайном уведомляем снова
-            if ((Math.abs(diffToNow/diffToModified) < 0.66 || diffToNow < 0) && (moment(task.start_notify).isBefore(moment()))) {
+            if ((Math.abs(diffToNow/diffToModified) < 0.66 || diffToNow < 0) && (!task.start_notify || moment(task.start_notify).isBefore(moment()))) {
                 notifyTasks[task.user_id] = notifyTasks[task.user_id] ? notifyTasks[task.user_id] : [];
                 notifyTasks[task.user_id].duedate = notifyTasks[task.user_id].duedate ? notifyTasks[task.user_id].duedate : []
                 notifyTasks[task.user_id].duedate.push(task.id);
@@ -70,6 +74,7 @@ async function checkEventTriggers() {
             // console.log(`${task.id} need to notify`)
         }
     });
+    //console.log(duedateTasks)
     console.log(notifyTasks)
     await notifyUsersForTasks(notifyTasks);
 }
@@ -156,7 +161,7 @@ async function onGetTelegramCallback(msg) {
                         task = await changeTask(task.id, {type: data.type_id})
 
                         //console.log(task)
-                        answer.text = `Категория изменена на "${types.filter(type => type.name === task.task_type)[0].fullname}"`
+                        answer.text = `Категория изменена на "${types.filter(type => type.name === task.taskType.name)[0].fullname}"`
                         answer.replyMarkup = {}
                         break;
                     case "complete":
@@ -170,7 +175,7 @@ async function onGetTelegramCallback(msg) {
                         answer.replyMarkup = {}
                         break;
                     case "startnotif":
-                        let date = moment(task.deadline).subtract('hours',data.val).format("DD.MM.YYYY HH:mm")
+                        let date = moment.unix(task.deadline).subtract('hours',data.val).format("DD.MM.YYYY HH:mm")
                         task = await changeTask(task.id, {start_notify: date})
 
                         answer.text = `${date}`
@@ -219,10 +224,10 @@ function onGetTelegramCmd(msg, props) {
                         const task = (await getTaskList(user.id, {filter: {column: 'id', operator: '=', value: +cmd}}))[0];
                         const task_type = (await getTaskTypes()).filter(type => type.id === task.type)[0].fullname
                         if (task) {
-                            answer.text = `/${task.id}\r\nКатегория: ${task_type}\r\nТема: ${task.subject}\r\nТекст: ${task.text || "-"}\r\n${task.task_type === 'duedate' ? "Срок: "+moment(task.deadline).utcOffset(user.timezone).format("DD.MM.YYYY hh:mm")+"\r\n" : ""}`;
+                            answer.text = `/${task.id}\r\nКатегория: ${task_type}\r\nТема: ${task.subject}\r\nТекст: ${task.text || "-"}\r\n${task.taskType.name === 'duedate' ? "Срок: "+format(utcToZonedTime(fromUnixTime(task.deadline), user.timezone), "Pp", {locale: ru})+"\r\n" : ""}`;
                             answer.replyMarkup = {
                                 inline_keyboard: [
-                                    [{text: `${task.urgent ? '**Пожар**' : 'Пожар'}`, callback_data: JSON.stringify({task_id: task.id, action: "urgent"})},{text: `${task.task_type === 'duedate' ? '**Срок**' : 'Срок'}`, callback_data: JSON.stringify({task_id: task.id, action: "duedate"})}],
+                                    [{text: `${task.urgent ? '**Пожар**' : 'Пожар'}`, callback_data: JSON.stringify({task_id: task.id, action: "urgent"})},{text: `${task.taskType.name === 'duedate' ? '**Срок**' : 'Срок'}`, callback_data: JSON.stringify({task_id: task.id, action: "duedate"})}],
                                     [{text: `${task.completed ? '**Завершена**' : 'Завершить'}`, callback_data: JSON.stringify({task_id: task.id, action: "complete"})}, {text: `${task.trashed ? '**Удалена**' : 'В корзину'}`, callback_data: JSON.stringify({task_id: task.id, action: "trash"})}],
                                     [{text: "Сменить категорию", callback_data: JSON.stringify({task_id: task.id, action: "category"})}],
                                 ],
@@ -308,11 +313,11 @@ function onGetTelegramMsg(msg) {
                                     //let newDate = moment(msg.text);
                                     if (newDate.isValid()) {
                                         let taskTypeId = taskTypes.filter(type => type.name === 'duedate')[0].id;
-                                        let newTask = await changeTask(user.telegram_lastaction.task_id, {deadline: newDate, type: taskTypeId});
+                                        let newTask = await changeTask(user.telegram_lastaction.task_id, {deadline: newDate.unix(), type: taskTypeId});
                                         await updateUser(user.id, {telegram_lastaction: null});
 
                                         answer = {
-                                            text: `Срок выполнения установлен на ${moment(newTask.deadline).format("DD.MM.YYYY HH:mm")}\r\nНачать напоминать за:`,
+                                            text: `Срок выполнения установлен на ${moment.unix(newTask.deadline).format("DD.MM.YYYY HH:mm")}\r\nНачать напоминать за:`,
                                             replyMarkup: {
                                                 inline_keyboard: [
                                                     [
@@ -383,11 +388,11 @@ async function getTasksOfType(user, typeFullName = "") {
         }
     })
     taskTypes.forEach((type) => {
-        if (taskListSorted.find(task => task.task_type === type.name) && (type.fullname === typeFullName || showAllTypes)) {
+        if (taskListSorted.find(task => task.taskType.name === type.name) && (type.fullname === typeFullName || showAllTypes)) {
             answer += `${type.fullname}:\r\n`
                 + taskListSorted
-                    .filter(item => item.task_type === type.name && !item.trashed)
-                    .map(item => `${item.urgent ? "!!!" : ""} ${item.task_type === 'duedate' ? "(СРОК)" : ""} /${item.id} ${item.subject}`).join('\r\n').toString()
+                    .filter(item => item.taskType.name === type.name && !item.trashed)
+                    .map(item => `${item.urgent ? "!!!" : ""} ${item.taskType.name === 'duedate' ? "(СРОК)" : ""} /${item.id} ${item.subject}`).join('\r\n').toString()
                 + '\r\n\r\n';
             //console.log(answer)
         }

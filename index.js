@@ -12,7 +12,7 @@ dotenv.config()
 let app = new Koa();
 app.use(cors({options: {
         origin: false,
-        allowMethods: ['GET', 'PUT', 'POST', 'PATCH']
+        allowMethods: ['GET', 'PUT', 'POST', 'PATCH', 'DELETE']
     }}));
 app.use(bodyParser());
 
